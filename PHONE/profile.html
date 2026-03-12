@@ -327,6 +327,15 @@
             <button class="action-btn action-btn-danger" onclick="CSS_BUDDY.logout(); window.location.href='index.html'">🚪 Logout</button>
           </div>
 
+          <div class="action-row" style="border-top:2px solid #FEE2E2;margin-top:8px;padding-top:14px;background:#FFF5F5;border-radius:12px;padding:14px">
+            <div>
+              <div class="action-label" style="color:#DC2626;font-weight:700">⚠️ Danger Zone</div>
+              <div class="action-value" style="color:#7f1d1d;font-weight:600;font-size:0.88rem">Delete Account</div>
+              <div style="color:#B91C1C;font-weight:500;font-size:0.78rem;margin-top:2px">Permanently deletes your account, progress, scores &amp; bookmarks. This <strong>cannot</strong> be undone.</div>
+            </div>
+            <button class="action-btn" style="background:#DC2626;color:#fff;font-weight:800;padding:9px 18px;border-radius:12px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-size:0.82rem;white-space:nowrap" onclick="openDeleteModal()">🗑️ Delete Account</button>
+          </div>
+
         </div>
       </div>
 
@@ -666,6 +675,76 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
+
+<!-- ══ DELETE ACCOUNT CONFIRMATION MODAL ══ -->
+<div id="delete-modal-overlay" style="
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:2000;
+  align-items:center;justify-content:center;backdrop-filter:blur(4px);
+">
+  <div style="
+    background:#fff;border-radius:24px;padding:32px 30px 28px;max-width:420px;width:92%;
+    box-shadow:0 24px 64px rgba(0,0,0,0.35);animation:fadeUp 0.3s ease;
+  ">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:3rem;margin-bottom:10px">⚠️</div>
+      <h2 style="font-family:'Outfit',sans-serif;font-size:1.3rem;font-weight:900;color:#7f1d1d;margin-bottom:8px">Delete Your Account?</h2>
+      <p style="font-family:'Outfit',sans-serif;font-size:0.88rem;color:#64748B;line-height:1.6">
+        This will <strong style="color:#DC2626">permanently delete</strong> your account and all data including:<br>
+        quiz scores, game high scores, progress &amp; bookmarks.<br><br>
+        <strong>This action cannot be undone.</strong>
+      </p>
+    </div>
+    <div style="margin-bottom:18px">
+      <label style="font-family:'Outfit',sans-serif;font-size:0.82rem;font-weight:700;color:#374151;display:block;margin-bottom:6px">
+        Type <strong style="color:#DC2626">DELETE</strong> to confirm:
+      </label>
+      <input id="delete-confirm-input" type="text" placeholder="Type DELETE here"
+        style="width:100%;padding:11px 14px;border:2px solid #E2E8F0;border-radius:12px;font-family:'Outfit',sans-serif;font-size:0.92rem;outline:none;transition:border-color 0.2s"
+        oninput="document.getElementById('delete-confirm-input').style.borderColor=this.value==='DELETE'?'#DC2626':'#E2E8F0'"
+      />
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="closeDeleteModal()" style="
+        padding:10px 22px;border-radius:12px;border:2px solid #E2E8F0;background:#fff;
+        font-family:'Outfit',sans-serif;font-weight:700;font-size:0.88rem;cursor:pointer;color:#64748B;
+      ">Cancel</button>
+      <button id="delete-confirm-btn" onclick="confirmDeleteAccount()" style="
+        padding:10px 22px;border-radius:12px;border:none;background:#DC2626;color:#fff;
+        font-family:'Outfit',sans-serif;font-weight:800;font-size:0.88rem;cursor:pointer;
+        opacity:0.5;transition:opacity 0.2s;
+      " disabled>🗑️ Yes, Delete My Account</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openDeleteModal() {
+  var overlay = document.getElementById('delete-modal-overlay');
+  overlay.style.display = 'flex';
+  document.getElementById('delete-confirm-input').value = '';
+  document.getElementById('delete-confirm-btn').disabled = true;
+  document.getElementById('delete-confirm-btn').style.opacity = '0.5';
+}
+function closeDeleteModal() {
+  document.getElementById('delete-modal-overlay').style.display = 'none';
+}
+document.getElementById('delete-confirm-input').addEventListener('input', function() {
+  var btn = document.getElementById('delete-confirm-btn');
+  var ok = this.value === 'DELETE';
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+});
+document.getElementById('delete-modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+function confirmDeleteAccount() {
+  if (document.getElementById('delete-confirm-input').value !== 'DELETE') return;
+  CSS_BUDDY.deleteAccount();
+  closeDeleteModal();
+  CSS_BUDDY.showToast('inf', '🗑️ Account deleted. Goodbye!');
+  setTimeout(function() { window.location.href = 'index.html'; }, 1500);
+}
+</script>
 
 <!-- ══ SITE FOOTER ══ -->
 <footer style="

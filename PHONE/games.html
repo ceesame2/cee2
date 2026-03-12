@@ -101,6 +101,7 @@
   .game-box {
     background: var(--card-bg); border-radius: 20px; padding: 28px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.07); position: relative; overflow: hidden;
+    width: 100%; box-sizing: border-box;
   }
   .game-box::before {
     content: ''; position: absolute; top: -40px; right: -40px;
@@ -143,13 +144,13 @@
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
   .scramble-feedback { text-align: center; font-weight: 700; font-size: 0.95rem; min-height: 28px; margin-top: 12px; }
 
-  .memory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 560px; margin: 0 auto 16px; }
+  .memory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 560px; margin: 0 auto 16px; width: 100%; box-sizing: border-box; }
   .mem-card {
     aspect-ratio: 1; border-radius: 14px; cursor: pointer;
     background: var(--navy); display: flex; align-items: center; justify-content: center;
     transition: transform 0.4s; transform-style: preserve-3d;
     user-select: none; position: relative; border: none; outline: none;
-    min-height: 110px;
+    min-height: 0;
   }
   .mem-card .front, .mem-card .back {
     position: absolute; inset: 0; border-radius: 14px;
@@ -340,10 +341,41 @@
     .game-board{max-width:100%!important}
     .memory-grid{gap:6px!important}
     .typing-area{font-size:0.9rem!important}
+    .game-box{padding:18px 14px!important}
+    .games-hero{padding:24px 20px!important}
+    .games-hero h1{font-size:1.6rem!important}
+  }
+  @media(max-width:520px){
+    .game-box{padding:14px 10px!important}
+    .memory-grid{
+      gap:5px!important;
+      max-width:100%!important;
+      width:100%!important;
+    }
+    .mem-card{min-height:72px!important}
+    .mem-emoji{font-size:1.8rem!important}
+    .mem-label{font-size:0.58rem!important;letter-spacing:0!important}
+    .game-score-row{gap:5px!important;flex-wrap:wrap!important}
+    .game-score{padding:6px 10px!important;font-size:0.78rem!important}
+    .game-btn{padding:8px 14px!important;font-size:0.82rem!important}
+    .scramble-word{font-size:1.8rem!important;letter-spacing:4px!important;padding:14px!important}
+    .game-title{font-size:1.05rem!important}
+    .catch-stats{gap:6px!important}
+    .catch-stat{padding:5px 10px!important;font-size:0.78rem!important}
+    #catch-canvas-wrap{height:340px!important}
+    .games-hero{padding:20px 16px!important}
+    .games-hero h1{font-size:1.4rem!important}
+    .games-hero .back-btn{font-size:0.8rem!important;padding:6px 14px!important}
+    .cable-visual{gap:3px!important;padding:14px 8px 8px!important}
+    .wire-block{width:28px!important;height:80px!important;font-size:0.55rem!important}
+    .drag-wire{width:34px!important;height:52px!important;font-size:0.52rem!important}
+    .drop-slot{width:36px!important;height:60px!important;font-size:0.58rem!important}
   }
   @media(max-width:480px){
     .game-tabs{gap:4px!important}
     .game-tab{padding:7px 10px!important;font-size:0.75rem!important}
+    .mem-card{min-height:62px!important}
+    .mem-emoji{font-size:1.5rem!important}
   }
 </style>
 </head>

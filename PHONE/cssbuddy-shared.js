@@ -70,16 +70,38 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
 var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googleusercontent.com';
   /* ════════════════════════════════════════════════════ */
 
-  var STORAGE_KEY = 'cssbuddy_session';
-  var USERS_KEY   = 'cssbuddy_users';
-  var COLOR_KEY   = 'cssbuddy_colors_v3';
+  var STORAGE_KEY  = 'cssbuddy_session';
+  var USERS_KEY    = 'cssbuddy_users';
+  var COLOR_KEY    = 'cssbuddy_colors_v3';
+  var REMEMBER_KEY = 'cssbuddy_remember';
 
   /* ─── Helpers ─────────────────────────────────────── */
   function getUsers()    { try{return JSON.parse(localStorage.getItem(USERS_KEY)||'{}');}catch(e){return{};} }
   function saveUsers(u)  { localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
-  function getSession()  { try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');}catch(e){return null;} }
-  function saveSession(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
-  function clearSession(){ localStorage.removeItem(STORAGE_KEY); }
+  function isRemembered(){ return localStorage.getItem(REMEMBER_KEY) !== 'false'; }
+  function getSession()  {
+    try{
+      // Check localStorage first (remembered), then sessionStorage (not remembered)
+      var ls=localStorage.getItem(STORAGE_KEY);
+      if(ls) return JSON.parse(ls);
+      var ss=sessionStorage.getItem(STORAGE_KEY);
+      if(ss) return JSON.parse(ss);
+      return null;
+    }catch(e){return null;}
+  }
+  function saveSession(s){
+    if(isRemembered()){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      sessionStorage.removeItem(STORAGE_KEY);
+    } else {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+  function clearSession(){
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
+  }
   function makeId()      { return '_'+Math.random().toString(36).slice(2,10); }
   function hashPass(p)   { var h=0;for(var i=0;i<p.length;i++){h=((h<<5)-h)+p.charCodeAt(i);h|=0;}return 'h'+Math.abs(h).toString(36); }
   function defaultData() {
@@ -161,6 +183,14 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       return{ok:true,user:users[key]};
     },
     logout:     function(){clearSession();},
+    deleteAccount:function(){
+      var s=getSession(); if(!s) return false;
+      var users=getUsers();
+      if(users[s.email]) delete users[s.email];
+      saveUsers(users);
+      clearSession();
+      return true;
+    },
     currentUser:function(){var s=getSession();if(!s)return null;return getUsers()[s.email]||null;},
     updateData: function(fn){
       var s=getSession();if(!s)return;
@@ -303,6 +333,9 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
 +'.cb-fld input{padding:10px 12px;border:2px solid #E2E8F0;border-radius:9px;font-family:\'Outfit\',sans-serif;font-size:.91rem;color:#1E293B;outline:none;transition:border-color .2s}\n'
 +'.cb-fld input:focus{border-color:var(--primary,#3B82F6)}\n'
 +'.cb-err{color:#EF4444;font-size:.78rem;min-height:14px;font-weight:500}\n'
++'.cb-remember-row{display:flex;align-items:center;margin:0 0 8px}\n'
++'.cb-remember-label{display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:600;color:#64748B;cursor:pointer;user-select:none}\n'
++'.cb-remember-label input[type=checkbox]{width:15px;height:15px;accent-color:var(--primary,#3B82F6);cursor:pointer}\n'
 +'.cb-bp{padding:12px;background:var(--primary,#3B82F6);color:#fff;border:none;border-radius:10px;font-family:\'Outfit\',sans-serif;font-size:.93rem;font-weight:700;cursor:pointer;transition:all .2s}\n'
 +'.cb-bp:hover{background:var(--primary-dark,#1D4ED8);transform:translateY(-1px)}.cb-bp:disabled{opacity:.6;cursor:not-allowed;transform:none}\n'
 +'.cb-div{display:flex;align-items:center;gap:9px;margin:4px 0}\n'
@@ -369,6 +402,7 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
 +'      <div class="cb-form">\n'
 +'        <div class="cb-fld"><label>Email</label><input type="email" id="cb-le" placeholder="you@gmail.com" autocomplete="email"/></div>\n'
 +'        <div class="cb-fld"><label>Password</label><input type="password" id="cb-lp" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="current-password"/></div>\n'
++'        <div class="cb-remember-row"><label class="cb-remember-label"><input type="checkbox" id="cb-remember" checked/><span>&#128274; Remember me</span></label></div>\n'
 +'        <div class="cb-err" id="cb-lerr"></div>\n'
 +'        <button class="cb-bp" onclick="CSS_BUDDY._doLogin()">&#128273; Login</button>\n'
 +'        <div class="cb-div"><span>or sign in with</span></div>\n'
@@ -481,6 +515,9 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       var email=document.getElementById('cb-le').value.trim(),pass=document.getElementById('cb-lp').value;
       var err=document.getElementById('cb-lerr'); err.textContent='';
       if(!email||!pass){err.textContent='Please fill in all fields.';return;}
+      // Save remember-me preference before login
+      var remEl=document.getElementById('cb-remember');
+      localStorage.setItem('cssbuddy_remember', (remEl&&!remEl.checked)?'false':'true');
       var res=Auth.login(email,pass); if(!res.ok){err.textContent=res.msg;return;}
       this.closeModal(); this._onSuccess(res.user);
     },
@@ -590,6 +627,21 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       Auth.logout(); this._renderNav(null); this._guestMode(true);
       if(typeof window.onCBLogout==='function') window.onCBLogout();
       this._toast('inf','&#128682; Logged out successfully.');
+    },
+
+    deleteAccount:function(){
+      var u=Auth.currentUser();
+      if(!u) return false;
+      if(window.google&&google.accounts&&google.accounts.id){
+        try{ google.accounts.id.disableAutoSelect(); }catch(e){}
+        try{ google.accounts.id.revoke(u.email,function(){}); }catch(e){}
+      }
+      var ok=Auth.deleteAccount();
+      if(ok){
+        this._renderNav(null); this._guestMode(true);
+        if(typeof window.onCBLogout==='function') window.onCBLogout();
+      }
+      return ok;
     },
 
     /* ── Data ───────────────────────────────────────── */
