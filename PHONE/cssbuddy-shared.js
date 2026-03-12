@@ -1,79 +1,146 @@
 /* ============================================================
-   CSS BUDDY — Shared Auth & State Manager v5
-   ✦ Email / Password login (works without any setup)
+   CSS BUDDY — Shared Auth & State Manager v6
+   ✦ Email / Password login
    ✦ REAL Google Sign-In via Google Identity Services
    ✦ Full color theme picker — presets + custom hex
    ✦ Persistent login & data across all pages
+   ✦ Cross-device sync via Firebase Firestore
 
-   ══ HOW TO ENABLE GOOGLE LOGIN (only 3 steps!) ════════
-   STEP 1: Go to https://console.cloud.google.com
-   STEP 2: New Project → APIs & Services → Credentials
-           → + CREATE CREDENTIALS → OAuth 2.0 Client ID
-           → Application type: Web application
-           → Add under "Authorized JavaScript origins":
-               http://localhost  (for testing on your PC)
-               https://yourdomain.com  (if hosted online)
-           → Click CREATE → Copy the Client ID
-   STEP 3: Paste your Client ID below (replace YOUR_CLIENT_ID...)
-   ══════════════════════════════════════════════════════ */
-  /*
- * Create form to request access token from Google's OAuth 2.0 server.
- */
- async function handleLogin() {
-    account.createOAuth2Session (
-       'google',
-       'https://group2-matiyaga.netlify.app/',
-       'https://group2-matiyaga.netlify.app/fail'
-    )
- }
+   ══ HOW TO ENABLE CROSS-DEVICE SYNC (Firebase) ═══════
+   STEP 1: Go to https://console.firebase.google.com
+   STEP 2: Create a new project (free "Spark" plan is fine)
+   STEP 3: Click "Web" (</>), register app, copy the config
+   STEP 4: In the left menu → Build → Firestore Database
+           → Create database → Start in TEST mode → Done
+   STEP 5: Paste the 6 values below from your Firebase config
+   ══════════════════════════════════════════════════════
 
-
-
-function oauthSignIn() {
-  // Google's OAuth 2.0 endpoint for requesting an access token
-  var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
-
-  // Create <form> element to submit parameters to OAuth 2.0 endpoint.
-  var form = document.createElement('form');
-  form.setAttribute('method', 'GET'); // Send as a GET request.
-  form.setAttribute('action', oauth2Endpoint);
-
-  // Parameters to pass to OAuth 2.0 endpoint.
-  var params = {'client_id': '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googleusercontent.com',
-                'redirect_uri': 'YOUR_REDIRECT_URI',
-                'response_type': 'token',
-                'scope': 'https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/calendar.readonly',
-                'include_granted_scopes': 'true',
-                'state': 'pass-through value'};
-
-  // Add form parameters as hidden input values.
-  for (var p in params) {
-    var input = document.createElement('input');
-    input.setAttribute('type', 'hidden');
-    input.setAttribute('name', p);
-    input.setAttribute('value', params[p]);
-    form.appendChild(input);
-  }
-
-  // Add form to page and submit it to open the OAuth 2.0 endpoint.
-  document.body.appendChild(form);
-  form.submit();
-}
+   ⚠️  IMPORTANT — Firestore Security Rules (after testing):
+   Go to Firestore → Rules and paste this to lock it down:
+   ─────────────────────────────────────────────────────
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /cssbuddy_users/{docId} {
+         allow read, write: if request.auth == null &&
+           request.resource.data.keys().hasOnly([
+             'name','email','provider','data',
+             'createdAt','lastLogin','avatarChoice'
+           ]);
+       }
+     }
+   }
+   ─────────────────────────────────────────────────────
+   ══════════════════════════════════════════════════ */
 
 (function (global) {
   'use strict';
-var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googleusercontent.com';
+
+  /* ═══════════════════════════════════════════════════════
+     🔥  FIREBASE CONFIG — paste your values here
+         Get these from Firebase Console → Project Settings → Your apps
+  ═══════════════════════════════════════════════════════ */
+  var FIREBASE_CONFIG = {
+    apiKey:            'YOUR_API_KEY',
+    authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
+    projectId:         'YOUR_PROJECT_ID',
+    storageBucket:     'YOUR_PROJECT_ID.appspot.com',
+    messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
+    appId:             'YOUR_APP_ID'
+  };
+  /* ════════════════════════════════════════════════════ */
+
+  var FIREBASE_ENABLED = FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY' && FIREBASE_CONFIG.apiKey.length > 10;
+
   /* ═══════════════════════════════════════════════════════
      🔑  PASTE YOUR GOOGLE CLIENT ID HERE  (line below)
          It looks like:  1234567890-abcdef.apps.googleusercontent.com
   ═══════════════════════════════════════════════════════ */
-var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googleusercontent.com';
+  var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googleusercontent.com';
   /* ════════════════════════════════════════════════════ */
 
   var STORAGE_KEY  = 'cssbuddy_session';
   var USERS_KEY    = 'cssbuddy_users';
   var COLOR_KEY    = 'cssbuddy_colors_v3';
   var REMEMBER_KEY = 'cssbuddy_remember';
+
+  /* ─── Firebase / Firestore lazy loader ───────────── */
+  var _db = null;
+  var _fbReady = false, _fbCbs = [];
+  function _fsDocId(email){ return email.toLowerCase().replace(/[^a-z0-9]/g,'_'); }
+
+  function loadFirebase(cb) {
+    if(!FIREBASE_ENABLED){ if(cb) cb(null); return; }
+    if(_fbReady && _db){ if(cb) cb(null); return; }
+    if(cb) _fbCbs.push(cb);
+    if(document.getElementById('_fb_app_scr')) return;
+
+    function injectScript(src, id, onload){
+      var s = document.createElement('script');
+      s.id = id; s.src = src; s.async = false;
+      s.onload = onload;
+      s.onerror = function(){ _fbCbs.forEach(function(c){c('Firebase load error');}); _fbCbs=[]; };
+      document.head.appendChild(s);
+    }
+
+    injectScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js','_fb_app_scr',function(){
+      injectScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js','_fb_fs_scr',function(){
+        try {
+          if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+          _db = firebase.firestore();
+          _fbReady = true;
+          _fbCbs.forEach(function(c){ c(null); }); _fbCbs = [];
+        } catch(e) {
+          _fbCbs.forEach(function(c){ c('Firebase init error: '+e.message); }); _fbCbs = [];
+        }
+      });
+    });
+  }
+
+  /* Push local user data up to Firestore (fire-and-forget) */
+  var _syncTimer = null;
+  function cloudPush(email) {
+    if(!FIREBASE_ENABLED) return;
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function(){
+      loadFirebase(function(err){
+        if(err || !_db) return;
+        var users = getUsers(), u = users[email];
+        if(!u) return;
+        var docId = _fsDocId(email);
+        _db.collection('cssbuddy_users').doc(docId).set({
+          name: u.name, email: u.email,
+          provider: u.provider || 'email',
+          data: u.data || {},
+          avatarChoice: u.avatarChoice || null,
+          createdAt: u.data && u.data.createdAt ? u.data.createdAt : Date.now(),
+          lastLogin: Date.now()
+        }, { merge: true }).catch(function(){});
+      });
+    }, 800); // debounce: batch rapid updates
+  }
+
+  /* Pull cloud data and merge into localStorage (used on login) */
+  function cloudPull(email, callback) {
+    if(!FIREBASE_ENABLED){ if(callback) callback(false); return; }
+    loadFirebase(function(err){
+      if(err || !_db){ if(callback) callback(false); return; }
+      var docId = _fsDocId(email);
+      _db.collection('cssbuddy_users').doc(docId).get().then(function(doc){
+        if(!doc.exists){ if(callback) callback(false); return; }
+        var cloud = doc.data();
+        var users = getUsers();
+        var local = users[email];
+        if(!local){ if(callback) callback(false); return; }
+        // Merge cloud data into local — cloud wins for progress/scores
+        if(cloud.data) local.data = cloud.data;
+        if(cloud.name) local.name = cloud.name;
+        if(cloud.avatarChoice) local.avatarChoice = cloud.avatarChoice;
+        saveUsers(users);
+        if(callback) callback(true);
+      }).catch(function(){ if(callback) callback(false); });
+    });
+  }
 
   /* ─── Helpers ─────────────────────────────────────── */
   function getUsers()    { try{return JSON.parse(localStorage.getItem(USERS_KEY)||'{}');}catch(e){return{};} }
@@ -150,7 +217,9 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       if(users[key]) return{ok:false,msg:'An account with this email already exists.'};
       var id=makeId();
       users[key]={id:id,name:name.trim(),email:key,pass:hashPass(password),data:defaultData(),provider:'email'};
-      saveUsers(users); return{ok:true,user:users[key]};
+      saveUsers(users);
+      cloudPush(key); // sync new account to cloud
+      return{ok:true,user:users[key]};
     },
     login:function(email,password){
       var users=getUsers(), key=email.toLowerCase().trim(), u=users[key];
@@ -180,15 +249,23 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       }
       users[key].data.lastLogin=Date.now();
       saveUsers(users); saveSession({email:key,id:users[key].id});
+      cloudPush(key); // sync to cloud
       return{ok:true,user:users[key]};
     },
     logout:     function(){clearSession();},
     deleteAccount:function(){
       var s=getSession(); if(!s) return false;
       var users=getUsers();
-      if(users[s.email]) delete users[s.email];
+      var email=s.email;
+      if(users[email]) delete users[email];
       saveUsers(users);
       clearSession();
+      // Also remove from cloud
+      if(FIREBASE_ENABLED){
+        loadFirebase(function(err){
+          if(!err && _db) _db.collection('cssbuddy_users').doc(_fsDocId(email)).delete().catch(function(){});
+        });
+      }
       return true;
     },
     currentUser:function(){var s=getSession();if(!s)return null;return getUsers()[s.email]||null;},
@@ -196,6 +273,7 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       var s=getSession();if(!s)return;
       var users=getUsers(),u=users[s.email];if(!u)return;
       if(!u.data)u.data=defaultData(); fn(u.data); saveUsers(users);
+      cloudPush(s.email); // sync changes to cloud
     },
     getData:function(){var u=this.currentUser();return u?u.data:null;}
   };
@@ -512,6 +590,7 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
     },
 
     _doLogin:function(){
+      var self=this;
       var email=document.getElementById('cb-le').value.trim(),pass=document.getElementById('cb-lp').value;
       var err=document.getElementById('cb-lerr'); err.textContent='';
       if(!email||!pass){err.textContent='Please fill in all fields.';return;}
@@ -519,10 +598,16 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       var remEl=document.getElementById('cb-remember');
       localStorage.setItem('cssbuddy_remember', (remEl&&!remEl.checked)?'false':'true');
       var res=Auth.login(email,pass); if(!res.ok){err.textContent=res.msg;return;}
-      this.closeModal(); this._onSuccess(res.user);
+      self.closeModal();
+      // Pull latest data from cloud first, then show nav
+      cloudPull(email.toLowerCase().trim(), function(){
+        var user=Auth.currentUser()||res.user;
+        self._onSuccess(user);
+      });
     },
 
     _doRegister:function(){
+      var self=this;
       var name=document.getElementById('cb-rn').value.trim(),email=document.getElementById('cb-re').value.trim();
       var pass=document.getElementById('cb-rp').value,pass2=document.getElementById('cb-rp2').value;
       var err=document.getElementById('cb-rerr'); err.textContent='';
@@ -531,7 +616,7 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
       if(pass!==pass2){err.textContent='Passwords do not match.';return;}
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){err.textContent='Enter a valid email.';return;}
       var res=Auth.register(name,email,pass); if(!res.ok){err.textContent=res.msg;return;}
-      Auth.login(email,pass); this.closeModal(); this._onSuccess(res.user,true);
+      Auth.login(email,pass); self.closeModal(); self._onSuccess(res.user,true);
     },
 
     /* ══════════════════════════════════════════════════
@@ -576,7 +661,10 @@ var GOOGLE_CLIENT_ID = '732747904577-mehjk086g8jdedcs80518pu86eeirdk9.apps.googl
             if(!profile||!profile.email){ resetBtns(); self._toast('err','&#10060; Google did not return account info.'); return; }
             var res=Auth.googleLogin({ sub:profile.sub, email:profile.email, name:profile.name, picture:profile.picture });
             self.closeModal();
-            self._onSuccess(res.user);
+            cloudPull(profile.email.toLowerCase().trim(), function(){
+              var user=Auth.currentUser()||res.user;
+              self._onSuccess(user);
+            });
             resetBtns();
           },
           cancel_on_tap_outside:true,
